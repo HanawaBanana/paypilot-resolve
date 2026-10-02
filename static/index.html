@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PayPilot Resolve — policy-controlled commerce agent</title>
+<style>
+  :root{
+    --bg:#0a0f1a; --panel:#111a2b; --panel2:#0d1524; --line:#1f2b44;
+    --ink:#e9eefb; --muted:#8fa1c4; --accent:#0070ba; --ok:#25c26e; --bad:#ff6b6b;
+    --warn:#f2b544; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);
+         position:sticky;top:0;background:linear-gradient(180deg,#0b1220,#0a0f1a);z-index:5}
+  .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#0070ba,#003087)}
+  h1{font-size:16px;margin:0;font-weight:650}
+  .badges{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .badge{font:600 11px/1 var(--mono);padding:6px 9px;border-radius:999px;border:1px solid var(--line);
+         background:var(--panel2);color:var(--muted)}
+  .badge.on{color:#062; background:#123a25;border-color:#1d5c39}
+  .badge.live{color:#003; background:#cfe6f7;border-color:#9fc9e8}
+  .badge.rules{color:#3a2a05;background:#f6e2b8;border-color:#d8bb79}
+  main{max-width:1180px;margin:0 auto;padding:18px 20px 60px;display:grid;gap:14px}
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:14px}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  textarea{width:100%;min-height:70px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+           border-radius:9px;padding:10px;font:inherit}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;
+         font-weight:600;cursor:pointer}
+  button.ghost{background:#1b2740}
+  button.warn{background:#6b4a12}
+  button:disabled{opacity:.5;cursor:default}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  code,.mono{font-family:var(--mono);font-size:12px}
+  .pill{display:inline-block;padding:2px 7px;border-radius:999px;font:600 11px/1.6 var(--mono);
+        border:1px solid var(--line)}
+  .s-SUCCEEDED,.s-COMPLETED,.s-ALLOW{color:#053;background:#123a25;border-color:#1d5c39}
+  .s-DENIED,.s-FAILED,.s-MANUAL_REVIEW{color:#400;background:#3a1a1a;border-color:#6b2b2b}
+  .s-AWAITING_APPROVAL,.s-PENDING,.s-PENDING_APPROVAL{color:#3a2a05;background:#f6e2b8;border-color:#d8bb79}
+  .s-EXECUTING,.s-VERIFYING,.s-WAITING_BUYER,.s-RESERVED,.s-DISPATCHED{color:#012;background:#cfe6f7;border-color:#9fc9e8}
+  .s-UNKNOWN{color:#3a2a05;background:#f6e2b8;border-color:#d8bb79}
+  pre{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px;overflow:auto;
+      font-size:12px;margin:0;max-height:280px}
+  ol.timeline{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}
+  ol.timeline li{border-left:2px solid var(--line);padding:6px 0 6px 12px;margin-left:6px;font-size:12.5px}
+  ol.timeline li b{font-family:var(--mono);font-size:11.5px;color:#bcd0ef}
+  .muted{color:var(--muted)}
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  .steps li{margin-bottom:6px}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  .kpi div{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px}
+  .kpi span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .kpi b{font-size:16px}
+  .flash{padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:13px;display:none}
+  .flash.show{display:block}
+  .flash.err{background:#3a1a1a;border:1px solid #6b2b2b;color:#ffd9d9}
+  .flash.info{background:#10243a;border:1px solid #24496e;color:#d7e8f9}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div>
+  <h1>PayPilot Resolve</h1>
+  <div class="badges">
+    <span class="badge" id="b-mode">mode</span>
+    <span class="badge" id="b-ai">planner</span>
+    <span class="badge" id="b-policy">policy</span>
+    <span class="badge" id="b-audit">audit chain</span>
+  </div>
+</header>
+
+<main>
+  <div id="flash" class="flash"></div>
+
+  <section class="card">
+    <h2>Goal</h2>
+    <textarea id="goal">Collect $120 for the delivered UX audit and competitor scan. The client dropped the competitor scan, so refund $30 and pay $40 to the approved collaborator.</textarea>
+    <div class="row">
+      <button id="btn-start">Resolve scope change</button>
+      <button class="ghost" id="btn-approve" disabled>Approve plan</button>
+      <button class="ghost" id="btn-buyer" disabled>Buyer approves (mock)</button>
+      <button class="ghost" id="btn-advance" disabled>Advance</button>
+      <button class="warn" id="btn-interrupt" disabled>Interrupt after refund</button>
+      <button class="ghost" id="btn-resume" disabled>Resume</button>
+      <button class="ghost" id="btn-deny">Try an over-limit payout</button>
+    </div>
+    <div class="row muted" id="runline">no run yet</div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Plan (proposed, versioned)</h2>
+      <div class="muted" id="plan-meta">—</div>
+      <table><thead><tr><th>step</th><th>tool</th><th>depends on</th><th>business reason</th><th>state</th></tr></thead>
+      <tbody id="plan-rows"><tr><td colspan="5" class="muted">—</td></tr></tbody></table>
+      <div class="muted" id="plan-notes" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Policy decision (exposure)</h2>
+      <div id="approval-card" class="muted">Nothing awaiting approval.</div>
+      <pre id="decision" style="margin-top:10px">—</pre>
+    </section>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Audit timeline (hash-chained)</h2>
+      <ol class="timeline" id="timeline"><li class="muted">—</li></ol>
+    </section>
+
+    <section class="card">
+      <h2>Evidence — platform resources</h2>
+      <table><thead><tr><th>step</th><th>action</th><th>amount</th><th>recipient</th><th>state</th><th>platform id</th></tr></thead>
+      <tbody id="evidence-rows"><tr><td colspan="6" class="muted">—</td></tr></tbody></table>
+      <div class="kpi">
+        <div><span>captured</span><b id="k-captured">—</b></div>
+        <div><span>refunded</span><b id="k-refunded">—</b></div>
+        <div><span>paid out</span><b id="k-paid">—</b></div>
+        <div><span>net sale value</span><b id="k-net">—</b></div>
+      </div>
+      <div class="muted" style="margin-top:8px" id="kpi-note">Net sale value is captured − refunded; it is not profit and not a PayPal balance.</div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Raw run view</h2>
+    <pre id="raw">—</pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let RUN = null;
+
+function flash(msg, kind = "info") {
+  const el = $("flash");
+  el.className = "flash show " + (kind === "err" ? "err" : "info");
+  el.textContent = msg;
+  if (kind !== "err") setTimeout(() => el.classList.remove("show"), 6000);
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (minor) => minor == null ? "—" : "$" + (minor / 100).toFixed(2);
+
+async function api(path, body) {
+  const r = await fetch(path, { method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok && data.error) flash(data.error + (data.hint ? " — " + data.hint : ""), "err");
+  if (data.view && data.view.run) render(data.view);
+  return data;
+}
+
+function render(view) {
+  if (!view || !view.run) return;
+  RUN = view.run.run_id;
+  $("runline").innerHTML = `run <code>${esc(RUN)}</code> · state <span class="pill s-${esc(view.run.state)}">${esc(view.run.state)}</span> · ${esc(view.run.note || "")}`;
+
+  const plan = view.plan;
+  $("plan-meta").innerHTML = plan
+    ? `version <code>${plan.version}</code> · plan hash <code>${esc(plan.plan_hash).slice(0, 24)}…</code>`
+    : "no plan yet";
+
+  $("plan-rows").innerHTML = (view.steps || []).map(s => `<tr>
+      <td class="mono">${esc(s.step_id)}</td><td>${esc(s.action)}</td>
+      <td class="mono">${esc(s.depends_on || "—")}</td><td>${esc(s.reason)}</td>
+      <td><span class="pill s-${esc(s.state)}">${esc(s.state)}</span></td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">—</td></tr>`;
+
+  $("evidence-rows").innerHTML = (view.operations || []).map(o => `<tr>
+      <td class="mono">${esc(o.step_id)}</td><td>${esc(o.action)}</td><td>${esc(o.amount ? "$" + o.amount : "—")}</td>
+      <td class="mono">${esc(o.recipient_alias || "—")}</td>
+      <td><span class="pill s-${esc(o.state)}">${esc(o.state)}</span></td>
+      <td class="mono">${esc(o.platform_id || "—")}</td></tr>`).join("")
+    || `<tr><td colspan="6" class="muted">—</td></tr>`;
+
+  const captured = (view.operations || []).filter(o => o.action === "capture" && o.state === "SUCCEEDED");
+  const refunded = (view.operations || []).filter(o => o.action === "refund" && o.state === "SUCCEEDED");
+  const paid = (view.operations || []).filter(o => o.action === "payout" && o.state === "SUCCEEDED");
+  const capMinor = captured.length ? 12000 : null;   // the captured order amount is shown above
+  const refMinor = refunded.reduce((a, o) => a + Math.round(parseFloat(o.amount || 0) * 100), 0);
+  const payMinor = paid.reduce((a, o) => a + Math.round(parseFloat(o.amount || 0) * 100), 0);
+  $("k-captured").textContent = captured.length ? "$120.00" : "—";
+  $("k-refunded").textContent = refunded.length ? money(refMinor) : "—";
+  $("k-paid").textContent = paid.length ? money(payMinor) : "—";
+  $("k-net").textContent = (captured.length && refunded.length) ? money(capMinor - refMinor) : "—";
+
+  const timeline = (view.events || []).slice().reverse();
+  $("timeline").innerHTML = timeline.map(e => {
+    let note = "";
+    try { const p = JSON.parse(e.payload); note = summarise(e.type, p); } catch (err) {}
+    return `<li><b>#${e.seq} ${esc(e.type)}</b> <span class="muted">${esc(e.at)}</span><br>${note}</li>`;
+  }).join("") || `<li class="muted">—</li>`;
+
+  const decisionEvent = timeline.find(e => e.type === "policy_evaluated");
+  $("decision").textContent = decisionEvent ? JSON.stringify(JSON.parse(decisionEvent.payload), null, 2) : "—";
+
+  const needsApproval = (view.steps || []).some(s => s.state === "AWAITING_APPROVAL");
+  $("btn-approve").disabled = !needsApproval;
+  $("btn-buyer").disabled = view.run.state !== "WAITING_BUYER";
+  $("btn-advance").disabled = !RUN;
+  $("btn-interrupt").disabled = !RUN;
+  $("btn-resume").disabled = !RUN;
+
+  if (needsApproval) {
+    const rows = (view.operations || []).length;
+    $("approval-card").innerHTML = `<div class="warn"><b>Approval required</b> — money-out steps are pending.</div>
+      <p class="muted">Approving binds each step to its exact arguments (amount, currency, alias, symbolic resource and reason) plus this plan hash. Rejected amounts, aliases or dependencies cannot be approved away.</p>
+      <p class="muted">Plan hash <code>${esc(plan ? plan.plan_hash : "")}</code> · ${rows} operation row(s) recorded so far.</p>`;
+  } else {
+    $("approval-card").innerHTML = `<span class="muted">Nothing awaiting approval.</span>`;
+  }
+
+  $("raw").textContent = JSON.stringify({ run: view.run, steps: view.steps, operations: view.operations }, null, 2);
+}
+
+function summarise(type, payload) {
+  if (type === "policy_evaluated") {
+    const d = payload.decision;
+    return `decision <b class="${d === "ALLOW" ? "ok" : d === "DENY" ? "bad" : "warn"}">${d}</b> · ${esc((payload.reason_codes || []).join(", "))}`
+      + ` · amount <span class="mono">${payload.amount_minor == null ? "—" : money(payload.amount_minor)}</span>`
+      + ` · reserve <span class="mono">${money(payload.reservation_delta_minor)}</span>`
+      + (payload.limit_checks && payload.limit_checks.length
+          ? `<br><span class="muted">checks: ${payload.limit_checks.map(c => `${esc(c.rule)} ${c.observed_minor}+${c.proposed_delta_minor}≤${c.limit_minor} ${c.passed ? "ok" : "FAIL"}`).join(" · ")}</span>` : "");
+  }
+  if (type === "plan_proposed") return `source <b>${esc(payload.source)}</b> · ${(payload.steps || []).length} step(s) · model calls ${payload.model_calls}`
+    + ((payload.notes || []).length ? `<br><span class="muted">${esc(payload.notes.join("; "))}</span>` : "");
+  if (type === "validation_completed") return `admitted ${payload.admitted} · denied ${(payload.denied || []).length} · awaiting approval ${(payload.awaiting_approval || []).length}`;
+  if (type === "step_approved") return `step <b>${esc(payload.step_id)}</b> (${esc(payload.action)}) bound to <span class="mono">${esc(String(payload.arguments_hash).slice(0, 16))}…</span>`;
+  if (type === "operation_dispatched") return `attempt ${payload.attempt} · request <span class="mono">${esc(String(payload.request_id).slice(0, 14))}…</span>`;
+  if (type === "operation_succeeded") return `platform id <b class="mono">${esc(payload.platform_id)}</b>`;
+  if (type === "operation_ambiguous") return `<span class="warn">ambiguous outcome — reservation retained (${esc(payload.state)})</span>`;
+  if (type === "run_interrupted") return `<span class="warn">deliberate interruption after ${esc(payload.after_step)}</span>`;
+  if (type === "reconciled") return `reconciliation: <b>${esc(payload.outcome)}</b> ${payload.reason ? esc(payload.reason) : ""}`;
+  if (type === "run_succeeded") return `<b class="ok">resolved</b>`;
+  return `<span class="muted">${esc(JSON.stringify(payload)).slice(0, 220)}</span>`;
+}
+
+$("btn-start").onclick = async () => {
+  const goal = $("goal").value.trim();
+  flash("planning…");
+  await api("/api/runs", { goal });
+  flash("plan proposed. Review it, then approve.");
+};
+$("btn-approve").onclick = async () => { await api(`/api/runs/${RUN}/approve`, { session_id: "local-session" });
+  await api(`/api/runs/${RUN}/advance`, {}); flash("plan approved — executing within policy."); };
+$("btn-buyer").onclick = async () => { await api(`/api/runs/${RUN}/buyer-approve`, {}); 
+  await api(`/api/runs/${RUN}/advance`, {}); flash("buyer approved the order at PayPal."); };
+$("btn-advance").onclick = async () => { const r = await api(`/api/runs/${RUN}/advance`, {});
+  flash("advanced: " + (r.transition ? r.transition.state : "")); };
+$("btn-interrupt").onclick = async () => { const r = await api(`/api/runs/${RUN}/advance`, { stop_after: "s3" });
+  flash("interrupted after the refund — now press Resume."); };
+$("btn-resume").onclick = async () => {
+  let r = await api(`/api/runs/${RUN}/advance`, {});
+  for (let i = 0; i < 4; i++) {
+    if (!r.transition || ["SUCCEEDED","FAILED","DENIED","MANUAL_REVIEW"].includes(r.transition.state)) break;
+    r = await api(`/api/runs/${RUN}/advance`, {});
+  }
+  flash("resumed — completed operations are reused, nothing is paid twice.");
+};
+$("btn-deny").onclick = async () => {
+  const r = await api("/api/runs", { goal: "Pay $100000 to the approved collaborator right now." });
+  flash(r.view && r.view.run ? ("policy outcome: " + (r.transitions || []).map(t => t.state).join(" → "))
+    : "see timeline", "err");
+};
+
+(async function boot() {
+  const h = await (await fetch("/api/health")).json();
+  $("b-mode").textContent = h.mode === "sandbox" ? "SANDBOX" : "MOCK";
+  $("b-mode").className = "badge " + (h.mode === "sandbox" ? "live" : "");
+  $("b-ai").textContent = h.planner === "llm" ? "AI PLANNER" : "RULES MODE";
+  $("b-ai").className = "badge " + (h.planner === "llm" ? "on" : "rules");
+  $("b-policy").textContent = "policy " + h.policy_version;
+  const a = await (await fetch("/api/audit/verify")).json();
+  $("b-audit").textContent = a.intact ? "audit chain intact" : "AUDIT CHAIN BROKEN";
+  $("b-audit").className = "badge " + (a.intact ? "on" : "rules");
+})();
+</script>
+</body>
+</html>

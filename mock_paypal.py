@@ -173,6 +173,12 @@ class MockPayPal:
                     return {"found": True, key: found["id"], "record": dict(found)}
         return {"found": False, "resource": None, "record": None}
 
+    def get_order(self, order_id: str) -> Dict[str, Any]:
+        rec = self.orders.get(order_id)
+        if not rec:
+            raise PayPalPlatformError("ORDER_NOT_FOUND")
+        return dict(rec)
+
     def get_capture(self, capture_id: str) -> Dict[str, Any]:
         rec = self.captures.get(capture_id)
         if not rec:

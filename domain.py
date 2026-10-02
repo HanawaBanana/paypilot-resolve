@@ -70,15 +70,22 @@ def sha256_hex(text: str) -> str:
 
 
 def arguments_hash(action: str, amount_raw: Optional[str], currency: str,
-                   recipient_alias: Optional[str], resource_id: Optional[str],
+                   recipient_alias: Optional[str], resource_ref: Optional[str],
                    reason: str) -> str:
-    """Hash of the immutable argument binding an approval is tied to."""
+    """Hash of the immutable argument binding an approval is tied to.
+
+    The resource is hashed as the *symbolic reference* the plan declared
+    (`$s2.capture_id`), not as a resolved platform id: the operator approves
+    "refund $30 out of this order's capture", and the id is only known once the
+    capture actually happened. Resolved ids come from verified local records and
+    can never be supplied by the model.
+    """
     return sha256_hex(canonical_json({
         "action": action,
         "amount": amount_raw,
         "currency": currency,
         "recipient_alias": recipient_alias,
-        "resource_id": resource_id,
+        "resource_ref": resource_ref,
         "reason": reason,
     }))
 
@@ -113,6 +120,8 @@ class Operation:
     recipient_alias: Optional[str] = None
     recipient_hash: Optional[str] = None
     resource_id: Optional[str] = None
+    # The symbolic reference from the plan; what an approval is actually bound to.
+    resource_ref: Optional[str] = None
     # Raw recipient supplied by the model/user; any value here is a denial.
     supplied_recipient: Optional[str] = None
     # Fields the planner is not allowed to invent.
@@ -120,8 +129,10 @@ class Operation:
 
     @property
     def arguments_hash(self) -> str:
-        return arguments_hash(self.action, self.amount_raw, self.currency,
-                              self.recipient_alias, self.resource_id, self.reason)
+        return arguments_hash(
+            self.action, self.amount_raw, self.currency, self.recipient_alias,
+            self.resource_ref if self.resource_ref is not None else self.resource_id,
+            self.reason)
 
     @property
     def fingerprint(self) -> str:

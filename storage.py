@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, List, Optional
@@ -147,7 +148,11 @@ def _now_iso(now: Optional[datetime] = None) -> str:
 class Storage:
     def __init__(self, path: Optional[str] = None):
         self.path = path or config.DB_PATH
-        self.conn = sqlite3.connect(self.path, isolation_level=None)
+        # One connection guarded by a lock: this is a single-operator local tool.
+        # (A multi-worker deployment would want a connection per worker instead.)
+        self._lock = threading.RLock()
+        self.conn = sqlite3.connect(self.path, isolation_level=None,
+                                    check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
@@ -162,14 +167,15 @@ class Storage:
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
         """BEGIN IMMEDIATE: writers serialize, so headroom cannot be double-spent."""
-        self.conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield self.conn
-        except Exception:
-            self.conn.execute("ROLLBACK")
-            raise
-        else:
-            self.conn.execute("COMMIT")
+        with self._lock:
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield self.conn
+            except Exception:
+                self.conn.execute("ROLLBACK")
+                raise
+            else:
+                self.conn.execute("COMMIT")
 
     # --------------------------------------------------------------------- runs
     def create_run(self, run_id: str, goal: str, mode: str, at: Optional[datetime] = None,
@@ -299,6 +305,11 @@ class Storage:
         self.conn.execute(
             "UPDATE operations SET state=?, platform_id=COALESCE(?, platform_id), updated_at=?"
             " WHERE operation_id=?", (state, platform_id, _now_iso(at), operation_id))
+
+    def get_operation_by_step(self, run_id: str, step_id: str) -> Optional[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM operations WHERE run_id=? AND step_id=?",
+            (run_id, step_id)).fetchone()
 
     def operations_for_run(self, run_id: str) -> List[sqlite3.Row]:
         return list(self.conn.execute(
