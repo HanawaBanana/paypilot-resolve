@@ -94,21 +94,48 @@ class Orchestrator:
         return out
 
     # -------------------------------------------------------------- validation
-    def _resolve_resource(self, run_id: str, ref: Optional[str]) -> Optional[str]:
-        """`$s2.capture_id` -> the verified platform id recorded for step s2."""
-        if not ref or not isinstance(ref, str):
-            return None
-        if not ref.startswith("$"):
-            return None                      # a literal id from the model is never trusted
-        step_id = ref[1:].split(".", 1)[0]
+    # Which kind of verified resource an action must be pointed at.
+    RESOURCE_ROLE = {Action.CAPTURE: Action.CREATE_ORDER,   # capture targets an order
+                     Action.REFUND: Action.CAPTURE}         # refund targets a capture
+
+    def _resolve_resource(self, run_id: str, ref: Optional[str], role: Optional[str] = None):
+        """Resolve the resource a step acts on. Returns (platform_id, note).
+
+        The model may only *point* at a dependency; the kind of resource is fixed
+        by the action (a refund can only ever target a capture, a capture only an
+        order). A reference whose type does not match — or a literal id — is
+        ignored in favour of the most recent verified step of the right kind, and
+        the substitution is recorded rather than silently applied.
+        """
+        wanted = self.RESOURCE_ROLE.get(role) if role else None
+        step_id = None
+        if isinstance(ref, str) and ref.startswith("$"):
+            step_id = ref[1:].split(".", 1)[0]
+        if step_id:
+            row = self.storage.conn.execute(
+                "SELECT action, platform_id, state FROM operations WHERE run_id=? AND step_id=?",
+                (run_id, step_id)).fetchone()
+            if row and row["platform_id"] and row["state"] == OpState.SUCCEEDED:
+                if wanted is None or row["action"] == wanted:
+                    return row["platform_id"], None
+                return self._latest_verified(run_id, wanted,
+                                             "reference %s pointed at a %s; resolved by role"
+                                             % (ref, row["action"]))
+            if row is None:
+                return None, None            # dependency has not run yet: just not ready
+            return None, None
+        if wanted is None:
+            return None, ("a literal resource id is never trusted; ignored" if ref else None)
+        return self._latest_verified(run_id, wanted,
+                                     "no usable reference (%r); resolved by role" % ref)
+
+    def _latest_verified(self, run_id: str, action: str, note: str):
         row = self.storage.conn.execute(
-            "SELECT platform_id, state FROM operations WHERE run_id=? AND step_id=?",
-            (run_id, step_id)).fetchone()
-        if not row or not row["platform_id"]:
-            return None
-        if row["state"] != OpState.SUCCEEDED:
-            return None
-        return row["platform_id"]
+            "SELECT platform_id FROM operations WHERE run_id=? AND action=? AND state=?"
+            " ORDER BY created_at DESC LIMIT 1", (run_id, action, OpState.SUCCEEDED)).fetchone()
+        if row and row["platform_id"]:
+            return row["platform_id"], note
+        return None, None
 
     def _dependencies_satisfied(self, run_id: str, step) -> bool:
         """Every declared dependency must be verified before this step may run."""
@@ -132,7 +159,9 @@ class Orchestrator:
         except ValueError:
             args = {}
         ref = args.get("resource")
-        resource = self._resolve_resource(run_id, ref)
+        resource, resolve_note = self._resolve_resource(run_id, ref, step["action"])
+        if resolve_note:
+            self._resolution_notes.append({"step_id": step["step_id"], "note": resolve_note})
         if require_resource and step["action"] in (Action.CAPTURE, Action.REFUND) and not resource:
             return None                      # dependency not verified yet -> not ready
         return Operation(
@@ -162,6 +191,7 @@ class Orchestrator:
         pending_approval: List[Dict[str, Any]] = []
         denied: List[Dict[str, Any]] = []
         admitted = 0
+        self._resolution_notes = []
         for step in self.storage.get_steps(run_id):
             if step["state"] in ("SUCCEEDED", "SKIPPED", "DENIED"):
                 continue
@@ -220,10 +250,12 @@ class Orchestrator:
                 self.storage.set_run_state(run_id, RunState.EXECUTING, "", now)
             append_event(self.storage.conn, run_id, "validation_completed",
                          {"admitted": admitted, "denied": denied,
-                          "awaiting_approval": pending_approval}, _iso(now))
+                          "awaiting_approval": pending_approval,
+                          "resource_resolution": self._resolution_notes}, _iso(now))
         return {"state": ("DENIED" if denied else
                           RunState.AWAITING_APPROVAL if pending_approval else RunState.EXECUTING),
-                "denied": denied, "awaiting_approval": pending_approval, "admitted": admitted}
+                "denied": denied, "awaiting_approval": pending_approval, "admitted": admitted,
+                "resource_resolution": self._resolution_notes}
 
     # --------------------------------------------------------------- approval
     def approve(self, run_id: str, session_id: str = "local-session",

@@ -166,6 +166,20 @@ def test_33_dependency_on_a_later_step_is_rejected():
     assert any("not an earlier step" in n for n in notes)
 
 
+def test_capture_amount_from_the_model_is_normalised_not_trusted():
+    """A model that supplies a capture amount must not fail or bind the run."""
+    steps, notes = agent.validate_steps([
+        {"step_id": "s1", "action": "create_order", "args": {"amount": "120.00"},
+         "depends_on": None, "reason": "collect"},
+        {"step_id": "s2", "action": "capture",
+         "args": {"amount": "999.00", "resource": "$s1.order_id"},
+         "depends_on": "s1", "reason": "capture"},
+    ])
+    capture = [s for s in steps if s["action"] == "capture"][0]
+    assert capture["args"]["amount"] is None
+    assert any("derived from the verified order" in n for n in notes)
+
+
 def test_34_step_and_model_call_limits_terminate_safely():
     raw = [{"step_id": "s%d" % i, "action": "create_order",
             "args": {"amount": "1.00"}, "depends_on": None, "reason": "spam"}
@@ -207,6 +221,36 @@ def test_model_calls_are_bounded_and_unusable_output_is_not_trusted():
     proposal = planner.plan(GOAL)
     assert client.calls == config.MAX_MODEL_CALLS
     assert proposal.source == "rules"
+
+
+class MisreferencingPlanner:
+    """A model that points the refund at the order instead of the capture."""
+
+    def plan(self, goal, observations=None):
+        return agent.PlanProposal(source="llm", steps=[
+            {"step_id": "s1", "action": "create_order", "args": {"amount": "120.00"},
+             "depends_on": None, "reason": "collect"},
+            {"step_id": "s2", "action": "capture", "args": {"resource": "$s1.order_id"},
+             "depends_on": "s1", "reason": "capture"},
+            {"step_id": "s3", "action": "refund",
+             "args": {"amount": "30.00", "resource": "$s1.order_id"},   # wrong kind
+             "depends_on": "s2", "reason": "refund the dropped scan"},
+        ])
+
+
+def test_wrong_resource_reference_is_resolved_by_role_not_obeyed(tmp_path):
+    storage, client, ex, orch = setup(tmp_path, planner=MisreferencingPlanner())
+    run_id = orch.start("collect and refund", "mock", NOW)
+    state, _ = drive(orch, storage, client, run_id)
+    assert state == RunState.SUCCEEDED
+    ops = {o["step_id"]: o for o in storage.operations_for_run(run_id)}
+    capture_id = ops["s2"]["platform_id"]
+    order_id = ops["s1"]["platform_id"]
+    assert ops["s3"]["resource_id"] == capture_id      # the capture, not the order
+    assert ops["s3"]["resource_id"] != order_id
+    notes = [e for e in storage.conn.execute(
+        "SELECT payload FROM audit_events WHERE event_type='validation_completed'")]
+    assert any("resolved by role" in row["payload"] for row in notes)
 
 
 # --------------------------------------------------- 38. refund cannot exceed

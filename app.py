@@ -64,6 +64,29 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+@app.route("/return")
+def buyer_return():
+    """Where PayPal sends the buyer back after approving in the sandbox."""
+    order_id = request.args.get("token") or request.args.get("order_id") or ""
+    if not order_id:
+        return "PayPal came back without an order id.", 400
+    if _mode() == "sandbox" and hasattr(CLIENT, "get_order"):
+        try:
+            order = CLIENT.get_order(order_id)
+        except Exception as exc:
+            return "Order %s could not be verified: %s" % (order_id, exc), 502
+        return ("<h2>Buyer approval received</h2><p>Order <code>%s</code> is now "
+                "<b>%s</b>.</p><p>Return to the PayPilot Resolve console and press "
+                "<b>Advance</b>: the capture is bound to this verified order, and the "
+                "refund and payout follow it.</p>" % (order_id, order.get("status")))
+    return "<h2>Approval received (mock)</h2>"
+
+
+@app.route("/cancel")
+def buyer_cancel():
+    return "<h2>Checkout cancelled</h2><p>Nothing was captured.</p>"
+
+
 @app.route("/api/health")
 def health():
     return jsonify({

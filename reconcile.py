@@ -33,7 +33,12 @@ def reconcile(storage, client, operation_id: str,
     if row is None:
         return {"outcome": UNVERIFIABLE, "reason": "UNKNOWN_OPERATION"}
 
-    hit = client.find_by_request_id(row["request_id"])
+    # The mock can resolve by request id; the real adapter cannot (the platform
+    # exposes no such lookup), so prefer a resolver that works with known ids.
+    if hasattr(client, "find_for_operation"):
+        hit = client.find_for_operation(row)
+    else:
+        hit = client.find_by_request_id(row["request_id"])
     if hit.get("found"):
         record = hit.get("record") or {}
         amount = record.get("amount")

@@ -56,20 +56,40 @@ class LLMClient:
     def configured(self) -> bool:
         return bool(self.base_url and self.api_key and self.model)
 
-    def complete(self, system: str, user: str, max_tokens: int = 1200) -> str:
+    def complete(self, system: str, user: str, max_tokens: int = 6000) -> str:
+        """One bounded completion.
+
+        Reasoning models bill their thinking against the output budget: with too
+        small a budget the reply comes back empty with finish_reason=length even
+        though the model "answered". So the budget starts generous and is doubled
+        once if it is exhausted, which is the difference between the planner
+        working and silently degrading to rules mode.
+        """
         import requests
 
-        resp = requests.post(
-            self.base_url + "/chat/completions",
-            json={"model": self.model, "max_tokens": max_tokens,
-                  "messages": [{"role": "system", "content": system},
-                               {"role": "user", "content": user}]},
-            headers={"Authorization": "Bearer " + self.api_key,
-                     "Content-Type": "application/json"},
-            timeout=self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        return ((data.get("choices") or [{}])[0].get("message", {}) or {}).get("content") or ""
+        budget = max_tokens
+        for attempt in range(2):
+            resp = requests.post(
+                self.base_url + "/chat/completions",
+                json={"model": self.model, "max_tokens": budget,
+                      "messages": [{"role": "system", "content": system},
+                                   {"role": "user", "content": user}]},
+                headers={"Authorization": "Bearer " + self.api_key,
+                         "Content-Type": "application/json"},
+                timeout=self.timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            choice = (data.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or ""
+            if content.strip():
+                return content
+            reasons = [choice.get("finish_reason"),
+                       str((data.get("usage") or {}).get("completion_thinking_tokens"))]
+            if choice.get("finish_reason") != "length" or attempt == 1:
+                raise RuntimeError("EMPTY_REPLY finish=%s thinking_tokens=%s"
+                                   % tuple(reasons))
+            budget *= 2
+        return ""
 
 
 SYSTEM_PROMPT = """You are a payments planning assistant. You MUST respect these rules:
@@ -144,6 +164,13 @@ def validate_steps(raw_steps: Any) -> (List[Dict[str, Any]], List[str]):
                              % (step_id, depends_on))
                 continue
         amount = args.get("amount")
+        if action == "capture" and amount is not None:
+            # A capture's amount comes from the verified order, never from the
+            # plan. Normalise instead of failing the whole run, but say so: the
+            # policy engine would (correctly) refuse a caller-supplied amount.
+            notes.append("step %s: proposed capture amount ignored (derived from the "
+                         "verified order)" % step_id)
+            amount = None
         if amount is not None:
             if not isinstance(amount, str) or not AMOUNT_RE.fullmatch(amount.strip().lstrip("$")):
                 notes.append("step %s dropped: amount must be a plain string like \"12.00\""
