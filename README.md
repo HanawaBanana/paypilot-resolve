@@ -11,7 +11,7 @@ happened.
 
 > AI proposes. Policy authorizes. PayPal executes. Verification decides what happened.
 
-**Demo video (2:20, public): <https://youtu.be/skqc-7bJJ7E>** — a real PayPal sandbox
+**Demo video (2:20, public): <https://youtu.be/Rv2cLNXboPw>** — a real PayPal sandbox
 run, start to finish, including the interruption and the resume.
 
 Real evidence from the recorded run (read back from PayPal, not from local state):
