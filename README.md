@@ -11,6 +11,20 @@ happened.
 
 > AI proposes. Policy authorizes. PayPal executes. Verification decides what happened.
 
+**Demo video (2:20, public): <https://youtu.be/skqc-7bJJ7E>** — a real PayPal sandbox
+run, start to finish, including the interruption and the resume.
+
+Real evidence from the recorded run (read back from PayPal, not from local state):
+
+| resource | id | platform status |
+|---|---|---|
+| order | `95H90132D52748058` | `COMPLETED` |
+| capture | `6UT72402FC133551Y` | `PARTIALLY_REFUNDED` |
+| refund | `7E550592AE673915F` | `COMPLETED` |
+| payout | `MGPPKAXY53DVJ` | batch `SUCCESS` |
+
+62 offline tests pass with no credentials and no network (`python -m pytest -q`).
+
 ---
 
 ## Why this exists (the wedge)
@@ -57,7 +71,8 @@ cp .env.example .env                 # PAYPILOT_MODE=mock
 ```
 
 `mock` mode is a stateful in-memory PayPal: the same client interface, injected
-clock, sequential ids and scriptable failures. The full resolution flow —
+
+`.venv/bin/python -m pytest -q        # 62 deterministic tests, no network
 checkout, capture, partial refund, conditional payout, interruption and resume —
 runs end to end with zero credentials, which is also how the tests stay
 deterministic.

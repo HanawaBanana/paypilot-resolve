@@ -180,6 +180,22 @@ def test_capture_amount_from_the_model_is_normalised_not_trusted():
     assert any("derived from the verified order" in n for n in notes)
 
 
+def test_list_shaped_dependency_is_normalised():
+    """A dependency written as ["s1"] must not cost the plan its steps."""
+    steps, notes = agent.validate_steps([
+        {"step_id": "s1", "action": "create_order", "args": {"amount": "120.00"},
+         "depends_on": None, "reason": "collect"},
+        {"step_id": "s2", "action": "capture", "args": {"resource": "$s1.order_id"},
+         "depends_on": ["s1"], "reason": "capture"},
+        {"step_id": "s3", "action": "refund",
+         "args": {"amount": "30.00", "resource": "$s2.capture_id"},
+         "depends_on": ["s2"], "reason": "refund the dropped scan"},
+    ])
+    assert [s["step_id"] for s in steps] == ["s1", "s2", "s3"]
+    assert steps[1]["depends_on"] == "s1" and steps[2]["depends_on"] == "s2"
+    assert sum(1 for n in notes if "normalised" in n) == 2
+
+
 def test_34_step_and_model_call_limits_terminate_safely():
     raw = [{"step_id": "s%d" % i, "action": "create_order",
             "args": {"amount": "1.00"}, "depends_on": None, "reason": "spam"}

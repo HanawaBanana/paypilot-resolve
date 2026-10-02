@@ -157,8 +157,18 @@ def validate_steps(raw_steps: Any) -> (List[Dict[str, Any]], List[str]):
             notes.append("step %s dropped: missing business reason" % step_id)
             continue
         depends_on = raw.get("depends_on")
+        if isinstance(depends_on, (list, tuple)):
+            # Models routinely emit ["s1"] for a dependency field; normalise it
+            # instead of silently dropping a valid step.
+            if depends_on:
+                chosen = str(depends_on[0]).strip()
+                notes.append("step %s: dependency normalised from %s to %r"
+                             % (step_id, list(depends_on), chosen))
+                depends_on = chosen
+            else:
+                depends_on = None
         if depends_on is not None:
-            depends_on = str(depends_on)
+            depends_on = str(depends_on).strip()
             if depends_on not in seen:
                 notes.append("step %s dropped: dependency %s is not an earlier step"
                              % (step_id, depends_on))
