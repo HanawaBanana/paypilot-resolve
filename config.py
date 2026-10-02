@@ -64,3 +64,13 @@ RUN_DEADLINE_SECONDS = 300
 
 DB_PATH = os.getenv("PAYPILOT_DB", "paypilot-{}.sqlite3".format(MODE))
 RECIPIENTS_PATH = os.getenv("PAYPILOT_RECIPIENTS", "recipients.json")
+
+# Dispatch policy: bounded attempts, then a human decides.
+MAX_DISPATCH_ATTEMPTS = 3
+
+# How long a platform is assumed to remember a PayPal-Request-Id. The real
+# retention window is NOT documented for every endpoint (architecture §3 marks
+# payouts as "unknown - must verify"), so we treat this as a conservative local
+# policy: inside the window an unknown outcome may be retried with the same key,
+# outside it we fail closed and ask a human.
+REQUEST_ID_RETENTION_SECONDS = 6 * 3600
