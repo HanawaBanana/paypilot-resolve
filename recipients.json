@@ -1,0 +1,10 @@
+{
+  "_comment": "Operator-controlled recipient allowlist. Aliases are what plans and audit records carry; the address is resolved only at dispatch time. This committed file uses placeholders — override with PAYPILOT_RECIPIENTS=recipients.local.json for real addresses.",
+  "recipients": {
+    "collaborator": {
+      "display": "Approved collaborator (masked)",
+      "address": "collaborator@example.com",
+      "enabled": true
+    }
+  }
+}

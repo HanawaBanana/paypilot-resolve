@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+paypilot-*.sqlite3
+# local overrides: real recipient addresses and sandbox identifiers never ship
+recipients.local.json
+evidence/
+frameworks/
